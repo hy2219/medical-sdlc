@@ -1,0 +1,31 @@
+name: Merge collection
+
+# 수집 결과는 검토 대상이 아니라 기록이므로 바로 병합한다.
+# 봇이 연 PR은 pull_request 이벤트를 발생시키지 않아 workflow_run으로 이어받는다.
+on:
+  workflow_run:
+    workflows: ["Daily paper recommendations"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  # 아래 gh workflow run 이 쓴다.
+  actions: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          number=$(gh pr list --repo "$REPO" --state open --label collected \
+            --json number,files --limit 1 \
+            --jq '.[] | select(all(.files[].path; startswith("recommended/"))) | .number')
+          [ -n "$number" ] || { echo "no collection pull request to merge"; exit 0; }
+          gh pr merge "$number" --repo "$REPO" --squash --delete-branch
+          # 봇이 병합한 push 는 다른 워크플로를 발화시키지 않는다. 대시보드는
+          # 직접 부른다. workflow_dispatch 는 GITHUB_TOKEN 으로도 발화한다.
+          gh workflow run "Build dashboard" --repo "$REPO"

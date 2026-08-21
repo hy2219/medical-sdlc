@@ -1,0 +1,12 @@
+services:
+  postgres:
+    image: ghcr.io/hy2219/medical-sdlc-db:latest
+    pull_policy: always
+    environment:
+      POSTGRES_DB: medical
+      POSTGRES_USER: medical
+      POSTGRES_PASSWORD: medical
+      PGDATA: /var/lib/postgresql-db
+      LLM_DB_PASSWORD: ${LLM_DB_PASSWORD:-llm-readonly-local}
+    ports:
+      - "5432:5432"

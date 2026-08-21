@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medical Literature Review</title>
+<!--
+  이 파일은 tools/build_dashboard.py 가 생성한다. 직접 고치지 않는다.
+
+  제약(의도적): fetch() 없음 · type="module" 없음 · 외부 요청 없음.
+  file:// 로 열어도 그대로 동작해야 한다 — 병원 노트북에서 더블클릭 한 번.
+-->
+<style>
+  :root{
+    --bg:#f1f2f0; --panel:#f6f7f4; --card:#fff; --line:#e4e6e1; --line2:#eeefec;
+    --ink:#0b0b0c; --dim:rgba(60,60,67,.5); --dim2:rgba(60,60,67,.35);
+    --accent:#FFE66D; --accent-soft:#FFF3C2; --accent-bg:#FFF9E0;
+    --on-accent:#2b2410; --gold:#8a6d00; --danger:#FF4438;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,
+      'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif}
+  a{color:var(--gold);text-decoration:none}
+  a:hover{color:#6b5400}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:rgba(60,60,67,.18);border-radius:8px;
+    border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  .app{display:flex;height:100vh;width:100%;overflow:hidden}
+
+  /* ── 1열: 날짜 ─────────────────────────────────────────── */
+  .col-dates{width:250px;flex:none;display:flex;flex-direction:column;
+    background:radial-gradient(140% 80% at 0% 0%,#f6f7f4 0%,#eaece7 100%);
+    border-right:1.5px solid var(--line)}
+  .head{height:76px;flex:none;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 18px}
+  .head h1{margin:0;font-size:16px;font-weight:800;letter-spacing:-.5px}
+  .head .sub{font-size:12.5px;font-weight:650;color:var(--dim);font-variant-numeric:tabular-nums}
+  .scroll{flex:1;overflow-y:auto;padding:0 10px 16px}
+  .month{padding:14px 8px 8px;font-size:12px;font-weight:750;letter-spacing:.4px;color:rgba(60,60,67,.45)}
+  .day{display:flex;align-items:center;gap:10px;padding:11px;border-radius:15px;cursor:pointer;
+    margin-bottom:4px;background:transparent;transition:background .14s ease;border:0;width:100%;
+    text-align:left;font:inherit;color:inherit}
+  .day:hover{background:rgba(255,255,255,.75)}
+  .day.sel{background:var(--accent);box-shadow:0 10px 22px -14px rgba(255,214,60,.95)}
+  .day .n{width:28px;flex:none;text-align:right;font-size:18px;font-weight:800;
+    letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+  .day .mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .day .t1{font-size:13px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .day .t2{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;color:rgba(60,60,67,.45)}
+  .day.sel .t2{color:rgba(43,36,16,.6)}
+  .day.sel .n,.day.sel .t1{color:var(--on-accent)}
+  .day .badge{min-width:22px;height:22px;flex:none;display:inline-flex;align-items:center;
+    justify-content:center;padding:0 6px;border-radius:8px;font-size:12px;font-weight:800;
+    font-variant-numeric:tabular-nums;background:#fff;color:var(--dim)}
+  .day.sel .badge{background:rgba(43,36,16,.14);color:var(--on-accent)}
+  .ledger{flex:none;margin:0 10px 14px;padding:13px 14px;border-radius:16px;
+    background:var(--accent-bg);display:flex;align-items:flex-start;gap:9px}
+  .ledger .dot{width:9px;height:9px;margin-top:4px;border-radius:50%;background:#FFC53D;flex:none}
+  .ledger span{font-size:12px;font-weight:700;line-height:1.5;color:var(--gold)}
+
+  /* ── 2열: 논문 ─────────────────────────────────────────── */
+  .col-papers{width:376px;flex:none;display:flex;flex-direction:column;
+    background:var(--panel);border-right:1.5px solid var(--line)}
+  .phead{height:76px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 18px}
+  .phead .ttl{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .phead .ttl b{font-size:19px;font-weight:800;letter-spacing:-.5px}
+  .phead .ttl span{font-size:12.5px;font-weight:650;color:var(--dim)}
+  .search{display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:13px;
+    background:#fff;border:1.5px solid var(--line2)}
+  .search input{width:70px;border:0;outline:0;background:transparent;font-size:13.5px;
+    font-weight:600;font-family:inherit;color:var(--ink)}
+  .plist{flex:1;overflow-y:auto;padding:2px 12px 18px;display:flex;flex-direction:column;gap:10px}
+  .pcard{padding:17px 18px;border-radius:20px;cursor:pointer;background:#fff;
+    border:1.5px solid var(--line2);transition:background .14s ease;text-align:left;
+    font:inherit;color:inherit;width:100%;display:block}
+  .pcard:hover{background:#fffdf4;border-color:#e6e3d4}
+  .pcard.sel{background:var(--accent);border-color:var(--accent);
+    box-shadow:0 14px 30px -16px rgba(255,214,60,.95)}
+  .pcard .row1{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .pcard .venue{font-size:12px;font-weight:800;letter-spacing:.2px;color:var(--gold);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+  .pcard.sel .venue{color:var(--on-accent)}
+  .pcard .yr{font-size:12px;font-weight:700;color:var(--dim);font-variant-numeric:tabular-nums}
+  .pcard.sel .yr,.pcard.sel .dsline{color:rgba(43,36,16,.62)}
+  .pcard .ttl{font-size:15.5px;font-weight:750;line-height:1.44;letter-spacing:-.4px;text-wrap:pretty}
+  .pcard.sel .ttl{color:var(--on-accent)}
+  .pcard .dsline{margin-top:7px;font-size:12.5px;font-weight:650;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+  .empty{padding:56px 16px;text-align:center;font-size:14px;font-weight:650;color:var(--dim2)}
+
+  .chip{height:26px;display:inline-flex;align-items:center;padding:0 10px;border-radius:9px;
+    font-size:12px;font-weight:800;letter-spacing:-.1px;white-space:nowrap}
+  .chip{background:#f2f3f0;color:var(--dim2)}
+  .chip.ok{background:var(--accent);color:var(--on-accent)}
+  .pcard.sel .chip{background:rgba(43,36,16,.12);color:var(--on-accent)}
+
+  /* ── 3열: 분석 ─────────────────────────────────────────── */
+  .col-detail{flex:1;min-width:0;display:flex;flex-direction:column;background:#fff}
+  .dhead{height:76px;flex:none;display:flex;align-items:center;gap:10px;padding:0 26px;
+    border-bottom:1.5px solid #eef0ef}
+  .crumb{flex:1;min-width:0;font-size:13px;font-weight:700;color:rgba(60,60,67,.45);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dhead .actions{flex:none;display:flex;gap:9px;white-space:nowrap}
+  .btn{height:44px;display:flex;align-items:center;gap:8px;padding:0 17px;border-radius:14px;
+    font-size:14.5px;font-weight:750;cursor:pointer;font-family:inherit;
+    background:#fff;border:1.5px solid var(--line2);color:var(--ink);text-decoration:none}
+  .btn:hover{background:var(--panel)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);
+    font-weight:800;box-shadow:0 10px 22px -12px rgba(255,214,60,.9)}
+  .btn.primary:hover{background:#FFDA47}
+  .dbody{flex:1;overflow-y:auto}
+  .dwrap{max-width:840px;padding:38px 44px 84px}
+  .badges{display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+  .pill{height:30px;display:inline-flex;align-items:center;gap:7px;padding:0 13px;border-radius:20px;
+    background:var(--accent-soft);color:var(--gold);font-size:13px;font-weight:750}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:#FFC53D}
+  .meta{font-size:13px;font-weight:650;color:var(--dim)}
+  .dwrap h2{margin:0;font-size:35px;font-weight:800;line-height:1.29;letter-spacing:-1.1px;text-wrap:pretty}
+  .authors{margin-top:14px;font-size:15px;font-weight:600;line-height:1.55;color:rgba(60,60,67,.6)}
+  .sections{margin-top:30px;display:flex;flex-direction:column;gap:14px}
+  .sec{padding:22px 24px;border-radius:22px;background:#f6f8f7;border:1.5px solid var(--line2)}
+  .sec .sh{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+  .sec .num{width:26px;height:26px;border-radius:9px;background:#eceee9;display:flex;
+    align-items:center;justify-content:center;font-size:12px;font-weight:800}
+  .sec .name{font-size:14px;font-weight:800;letter-spacing:-.2px}
+  .sec .hint{font-size:12.5px;font-weight:650;color:rgba(60,60,67,.45)}
+  .sec .body{font-size:16px;font-weight:500;line-height:1.72;letter-spacing:-.2px;
+    text-wrap:pretty;color:#1c1c1e}
+  .tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .tag{height:30px;display:inline-flex;align-items:center;padding:0 13px;border-radius:11px;
+    background:#fff;border:1.5px solid #e6e8e3;font-size:13.5px;font-weight:750}
+  .sec.diff{background:var(--accent-bg);border:0}
+  .sec.diff .num{background:var(--accent);color:var(--on-accent)}
+  .sec.diff .name{color:var(--gold)}
+  .sec.diff .hint{color:rgba(138,109,0,.6)}
+  .diffrow{display:flex;align-items:flex-start;gap:11px;padding:13px 15px;border-radius:14px;
+    background:rgba(255,255,255,.72);margin-bottom:8px}
+  .mark{flex:none;min-width:44px;height:26px;display:inline-flex;align-items:center;
+    justify-content:center;border-radius:8px;font-size:12px;font-weight:800}
+  .mark.ok{background:var(--accent);color:var(--on-accent)}
+  .mark.no{background:var(--danger);color:#fff}
+  .diffrow span:last-child{flex:1;min-width:0;font-size:15px;font-weight:600;line-height:1.55;color:var(--on-accent)}
+  .sec.insight{background:var(--accent);border:0;padding:24px 26px;
+    box-shadow:0 18px 40px -22px rgba(255,214,60,.95)}
+  .sec.insight .num{background:rgba(43,36,16,.14);color:var(--on-accent)}
+  .sec.insight .name{color:var(--on-accent)}
+  .sec.insight .hint{color:rgba(43,36,16,.55);font-weight:700}
+  .sec.insight .body{font-size:19px;font-weight:700;line-height:1.62;letter-spacing:-.4px;color:var(--on-accent)}
+  .evidence{margin-top:16px;padding-top:14px;border-top:1.5px solid rgba(43,36,16,.14);
+    display:flex;flex-wrap:wrap;gap:16px}
+  .evidence span{font-size:12.5px;font-weight:750;color:rgba(43,36,16,.62)}
+  .figure{margin-top:30px;padding:20px 22px;border-radius:20px;border:1.5px solid var(--line2);
+    overflow-x:auto}
+  .figure svg{display:block;margin-top:12px;max-width:100%;height:auto}
+  .block{margin-top:30px;padding:20px 22px;border-radius:20px;border:1.5px solid var(--line2)}
+  .block-t{font-size:13px;font-weight:800;letter-spacing:.3px;color:var(--dim)}
+  .check{display:flex;align-items:center;gap:11px;margin-top:8px}
+  .cicon{flex:none;width:24px;height:24px;display:inline-flex;align-items:center;
+    justify-content:center;border-radius:8px;font-size:13px;font-weight:800}
+  .cicon.ok{background:var(--accent-soft);color:var(--gold)}
+  .cicon.no{background:var(--danger);color:#fff}
+  .check .cname{flex:1;min-width:0;font-size:14.5px;font-weight:650}
+  .check .cby{font-size:13px;font-weight:700;color:rgba(60,60,67,.4)}
+  .check .cby.model{color:var(--gold)}
+  .note{margin-top:11px;width:100%;min-height:104px;resize:vertical;padding:16px 18px;
+    border:1.5px solid var(--line2);border-radius:16px;font-family:inherit;font-size:15px;
+    font-weight:500;line-height:1.6;color:var(--ink);outline:0;background:#fff}
+  .note:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(255,230,109,.45)}
+  .sib{display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:14px;cursor:pointer;
+    border:1.5px solid #f2f3f0;margin-top:6px;background:#fff;width:100%;font:inherit;text-align:left}
+  .sib:hover{background:#fffdf4;border-color:#e6e3d4}
+  .sib .st{flex:1;min-width:0;font-size:14.5px;font-weight:700;letter-spacing:-.3px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sib .sv{font-size:12.5px;font-weight:700;color:rgba(60,60,67,.4)}
+  .hintbar{margin-top:32px;font-size:12.5px;font-weight:650;color:var(--dim2)}
+  .pending{padding:60px 0;text-align:center}
+  .pending p{font-size:15px;font-weight:650;color:var(--dim);line-height:1.7}
+
+  @media (max-width:1240px){ .actions .secondary{display:none} }
+  @media (max-width:1080px){ .crumb{display:none} }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script type="application/json" id="payload">__PAYLOAD__</script>
+<script>
+(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById("payload").textContent);
+  var DAYS = DATA.days || [];
+  var META = DATA.meta || {};
+  var WD = ["일","월","화","수","목","금","토"];
+
+  var state = { dateIdx: 0, paperId: null, query: "", notes: {} };
+  if (DAYS.length && DAYS[0].papers.length) state.paperId = DAYS[0].papers[0].id;
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c];
+    });
+  }
+  function visiblePapers() {
+    var d = DAYS[state.dateIdx];
+    if (!d) return [];
+    var q = state.query.trim().toLowerCase();
+    return d.papers.filter(function (p) {
+      if (!q) return true;
+      var hay = [p.title, (p.authors||[]).join(" "), p.venue, (p.datasets||[]).join(" ")]
+        .join(" ").toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+  }
+  function current() {
+    var vis = visiblePapers();
+    var d = DAYS[state.dateIdx];
+    if (!d) return null;
+    var hit = d.papers.filter(function (p) { return p.id === state.paperId; })[0];
+    return hit || vis[0] || d.papers[0] || null;
+  }
+
+  function renderDates() {
+    var h = "", lastMonth = "";
+    DAYS.forEach(function (d, i) {
+      var dt = new Date(d.date + "T00:00:00");
+      var label = dt.getFullYear() + "년 " + (dt.getMonth() + 1) + "월";
+      if (label !== lastMonth) { h += '<div class="month">' + label + "</div>"; lastMonth = label; }
+      var sel = i === state.dateIdx ? " sel" : "";
+      h += '<button class="day' + sel + '" data-date="' + i + '">' +
+             '<span class="mid">' +
+               '<span class="t1">' + d.date + "</span>" +
+               '<span class="t2">' + WD[dt.getDay()] + "요일 · 분석 " +
+                 d.papers.filter(function (x) { return !!x.analysis; }).length + "편</span>" +
+             "</span>" +
+             '<span class="badge">' + d.papers.length + "</span>" +
+           "</button>";
+    });
+    return h;
+  }
+
+  function renderPapers() {
+    var vis = visiblePapers();
+    if (!vis.length) return '<div class="empty">' +
+      (DAYS.length ? "조건에 맞는 논문이 없습니다" : "아직 수집된 논문이 없습니다") + "</div>";
+    var cur = current();
+    return vis.map(function (p) {
+      var sel = cur && p.id === cur.id ? " sel" : "";
+      return '<button class="pcard' + sel + '" data-paper="' + esc(p.id) + '">' +
+        '<span class="row1">' +
+          '<span class="venue">' + esc(p.venue) + "</span>" +
+          '<span style="flex:1"></span>' +
+          '<span class="yr">' + esc(p.year) + "</span>" +
+          '<span class="chip ' + (p.analysis ? "ok" : "") + '">' + (p.analysis ? "분석 완료" : "분석 전") + "</span>" +
+        "</span>" +
+        '<span class="ttl" style="display:block">' + esc(p.title) + "</span>" +
+        '<span class="dsline" style="display:block">' +
+          esc((p.datasets && p.datasets.length ? p.datasets.join(" · ") : (p.axes || []).join(" · "))) +
+        "</span>" +
+      "</button>";
+    }).join("");
+  }
+
+  function section(n, name, hint, bodyHtml, cls) {
+    return '<div class="sec ' + (cls || "") + '">' +
+      '<div class="sh"><span class="num">' + n + "</span>" +
+      '<span class="name">' + name + '</span><span class="hint">' + hint + "</span></div>" +
+      bodyHtml + "</div>";
+  }
+
+  function renderDetail() {
+    var d = DAYS[state.dateIdx];
+    var p = current();
+    if (!p) return '<div class="dwrap"><div class="pending"><p>' + (DAYS.length
+      ? "이 날짜에 논문이 없습니다."
+      : "수집 워크플로를 한 번 실행하면 여기에 논문이 쌓입니다.") + "</p></div></div>";
+
+    var h = '<div class="dwrap">';
+    h += '<div class="badges">' +
+      '<span class="pill"><span class="dot"></span>' + esc(p.venue) + " " + esc(p.year) + "</span>" +
+      '<span class="chip ' + (p.analysis ? "ok" : "") + '" style="height:30px;border-radius:10px;font-size:12.5px;padding:0 12px">' +
+        (p.analysis ? "분석 완료" : "분석 전") + "</span>" +
+      '<span class="meta">' + esc(p.source) + "</span>" +
+      "</div>";
+    h += "<h2>" + esc(p.title) + "</h2>";
+    h += '<div class="authors">' + esc((p.authors || []).join(", ")) + "</div>";
+
+    if (!p.analysis) {
+      // ponytail: 수집 단계가 남긴 네 문장을 그대로 보여준다. 딥다이브가 오면 아래 4섹션이 이 자리를 대체한다.
+      var brief = [
+        [1, "takeaway", "이 논문이 말하는 것", p.takeaway || p.abstract],
+        [2, "relevance", "왜 우리 데이터와 맞물리나", p.relevance],
+        [3, "caveat", "이 논문이 답해주지 못하는 것", p.caveat],
+        [4, "check", "분석에서 확인해 볼 질문", p.check]
+      ].filter(function (s) { return s[3]; });
+
+      if (brief.length) {
+        h += '<div class="sections">' + brief.map(function (s) {
+          return section(s[0], s[1], s[2], '<div class="body">' + esc(s[3]) + "</div>");
+        }).join("") + "</div>";
+      }
+      h += '<div class="pending"><p>여기까지가 수집 단계의 1차 판단입니다.<br>' +
+           '이슈를 열어 분석을 요청하면 근거와 검증 결과가 이 자리에 들어옵니다.</p></div>';
+      h += renderSiblings(d, p) + "</div>";
+      return h;
+    }
+
+    var a = p.analysis;
+    h += '<div class="sections">';
+    h += section(1, "abstract", "무엇을 했나",
+      '<div class="body">' + esc(a.summary || p.abstract) + "</div>");
+    h += section(2, "dataset", "무엇이 필요했나",
+      '<div class="tags">' + (a.datasets || []).map(function (x) {
+        return '<span class="tag">' + esc(x) + "</span>";
+      }).join("") + "</div>" +
+      '<div class="body" style="font-size:15.5px;color:rgba(28,28,30,.82)">' +
+        esc(a.dataset_note) + "</div>");
+    h += section(3, "difference", "그것이 우리에게 있나",
+      (a.diffs || []).map(function (x) {
+        return '<div class="diffrow"><span class="mark ' + (x.ok ? "ok" : "no") + '">' +
+          (x.ok ? "있음" : "없음") + "</span><span>" + esc(x.text) + "</span></div>";
+      }).join(""), "diff");
+    h += section(4, "insight", "그래서 무엇이 남나",
+      '<div class="body">' + esc(a.insight) + "</div>" +
+      '<div class="evidence">' + (a.evidence || []).map(function (e) {
+        return "<span>" + esc(e.label) + " " + esc(e.value) + "</span>";
+      }).join("") + "</div>", "insight");
+    h += "</div>";
+
+    if (a.figure) {
+      h += '<div class="figure"><div class="block-t">산출물 — 승인된 제안대로 생성</div>' +
+a.figure + "</div>";
+    }
+
+    h += '<div class="block"><div class="block-t">검증 결과</div>' +
+      (a.checks || []).map(function (c) {
+        return '<div class="check"><span class="cicon ' + (c.ok ? "ok" : "no") + '">' +
+          (c.ok ? "✓" : "!") + '</span><span class="cname">' + esc(c.name) + "</span>" +
+          '<span class="cby ' + (c.by === "모델" ? "model" : "") + '">' + esc(c.by) + "</span></div>";
+      }).join("") + "</div>";
+
+    h += '<div style="margin-top:26px"><div class="block-t">검토 메모</div>' +
+      '<textarea class="note" id="note" placeholder="병합 전에 확인할 것을 적어두세요…">' +
+      esc(state.notes[p.id] !== undefined ? state.notes[p.id] : (a.note || "")) + "</textarea></div>";
+
+    h += renderSiblings(d, p);
+    h += '<div class="hintbar">↑ ↓ 또는 J / K 로 논문 이동 · ⌥↑ ↓ 로 날짜 이동</div>';
+    return h + "</div>";
+  }
+
+  function renderSiblings(d, p) {
+    var sibs = d.papers.filter(function (x) { return x.id !== p.id; });
+    if (!sibs.length) return "";
+    return '<div style="margin-top:30px;padding-top:24px;border-top:1.5px solid #eef0ef">' +
+      '<div class="block-t" style="margin-bottom:12px">같은 날 함께 조사된 논문</div>' +
+      sibs.map(function (s) {
+        return '<button class="sib" data-paper="' + esc(s.id) + '">' +
+          '<span class="chip ' + (s.analysis ? "ok" : "") + '">' + (s.analysis ? "분석 완료" : "분석 전") + "</span>" +
+          '<span class="st">' + esc(s.title) + "</span>" +
+          '<span class="sv">' + esc(s.venue) + "</span></button>";
+      }).join("") + "</div>";
+  }
+
+  function render() {
+    var d = DAYS[state.dateIdx] || { papers: [], question: "", kind: "", label: "" };
+    var p = current();
+    var analyzed = d.papers.filter(function (x) { return !!x.analysis; }).length;
+
+    document.getElementById("app").innerHTML =
+      '<div class="col-dates">' +
+        '<div class="head"><h1>조사 기록</h1>' +
+        '<div class="sub">논문 ' + META.total_papers + "편 · 날짜 " + DAYS.length + "일</div></div>" +
+        '<div class="scroll" id="dates">' + renderDates() + "</div>" +
+        '<div class="ledger"><span class="dot"></span><span>' + esc(META.ledger || "") + "</span></div>" +
+      "</div>" +
+
+      '<div class="col-papers">' +
+        '<div class="phead"><div class="ttl"><b>' + esc(d.date || "") + "</b>" +
+        "<span>논문 " + d.papers.length + "편 · 분석 " + analyzed +
+        "편</span></div>" +
+        '<div class="search">' +
+          '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(60,60,67,.4)" ' +
+            'stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle>' +
+            '<path d="M16.5 16.5 21 21"></path></svg>' +
+          '<input id="q" placeholder="검색" value="' + esc(state.query) + '"></div></div>' +
+        '<div class="plist">' + renderPapers() + "</div>" +
+      "</div>" +
+
+      '<div class="col-detail">' +
+        '<div class="dhead">' +
+          '<span class="crumb">' + esc(d.date || "") + (p ? "  ›  " + esc(p.title) : "") + "</span>" +
+          '<div class="actions">' +
+            (p && p.url ? '<a class="btn primary" href="' + esc(p.url) + '" target="_blank" rel="noopener">원문 열기</a>' : "") +
+            (p && p.issue_url ? '<a class="btn secondary" href="' + esc(p.issue_url) + '" target="_blank" rel="noopener">이슈 열기</a>' : "") +
+          "</div>" +
+        "</div>" +
+        '<div class="dbody">' + renderDetail() + "</div>" +
+      "</div>";
+
+    wire();
+  }
+
+  function wire() {
+    document.querySelectorAll("[data-date]").forEach(function (el) {
+      el.onclick = function () {
+        state.dateIdx = +el.dataset.date;
+        var d = DAYS[state.dateIdx];
+        state.paperId = d.papers.length ? d.papers[0].id : null;
+        state.query = "";
+        render();
+      };
+    });
+    document.querySelectorAll("[data-paper]").forEach(function (el) {
+      el.onclick = function () { state.paperId = el.dataset.paper; render(); };
+    });
+    var q = document.getElementById("q");
+    if (q) q.oninput = function () {
+      state.query = q.value; render();
+      var nq = document.getElementById("q");
+      if (nq) { nq.focus(); nq.setSelectionRange(nq.value.length, nq.value.length); }
+    };
+    var note = document.getElementById("note");
+    if (note) note.oninput = function () {
+      var p = current(); if (p) state.notes[p.id] = note.value;
+    };
+  }
+
+  document.addEventListener("keydown", function (e) {
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+    if (e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      var n = DAYS.length; if (!n) return;
+      state.dateIdx = (state.dateIdx + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+      var d = DAYS[state.dateIdx];
+      state.paperId = d.papers.length ? d.papers[0].id : null;
+      state.query = "";
+      return render();
+    }
+    var list = visiblePapers();
+    var down = e.key === "ArrowDown" || e.key === "j" || e.key === "J";
+    var up = e.key === "ArrowUp" || e.key === "k" || e.key === "K";
+    if ((!down && !up) || !list.length) return;
+    e.preventDefault();
+    var cur = current();
+    var i = list.map(function (x) { return x.id; }).indexOf(cur ? cur.id : "");
+    i = Math.max(0, Math.min(list.length - 1, (i < 0 ? 0 : i) + (down ? 1 : -1)));
+    state.paperId = list[i].id;
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

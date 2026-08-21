@@ -1,0 +1,34 @@
+name: 논문 분석 요청
+description: 수집된 논문 한 편을 우리 데이터와 대조해 달라고 Copilot에게 요청합니다.
+title: "Analyze: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        등록하는 순간 에이전트가 분석을 시작합니다.
+        에이전트는 분석 계획을 제안하는 풀 리퀘스트를 열고, 승인을 기다립니다.
+  - type: input
+    id: paper
+    attributes:
+      label: 논문 경로
+      description: "`recommended/` 아래의 `paper.json` 경로를 그대로 붙여 넣으세요."
+      placeholder: recommended/2026-08-19/some-paper-slug/paper.json
+    validations:
+      required: true
+  - type: textarea
+    id: focus
+    attributes:
+      label: 무엇을 중점적으로 봐주면 좋을까요?
+      description: 궁금한 임상 질문, 하위군, 결과 지표, 비교 대상을 적어 주세요.
+      placeholder: |
+        이 신뢰도 추정 방법이 우리처럼 작은 Nodule 하위군에서도 통할까요?
+        특히 거짓음성(놓친 결절)이 걱정됩니다.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 참고할 내용
+      description: 제약 조건, 이전 연구, 선호하는 그래프 형태 등 (선택)
+    validations:
+      required: false

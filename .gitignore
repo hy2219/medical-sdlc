@@ -1,0 +1,6 @@
+.DS_Store
+sample data/
+__pycache__/
+site/index.html
+db/data/images/
+db/data/hospital.csv
